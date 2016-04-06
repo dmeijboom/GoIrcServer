@@ -4,6 +4,7 @@ import (
     "net"
     "bufio"
     "irc/assert"
+    "strings"
     "fmt"
 )
 
@@ -14,6 +15,9 @@ type Server struct {
 
 // Connect opens a socket connection
 func (server *Server) Connect() {
+    server.Db = &Database{}
+    server.Db.Initialize()
+    
     serv, _ := net.Listen("tcp", "localhost:9000")
     
     for {
@@ -32,13 +36,123 @@ func (server *Server) HandleConnection(conn *net.Conn) {
         line, _, _ := reader.ReadLine()
         parsed, _ := ParseMessage(string(line))
         
-        server.HandleMessage(parsed)
+        server.HandleMessage(*conn, parsed)
     }
 }
 
+// Reply writes output to the connection
+func (server *Server) Reply(conn net.Conn, reply *Reply) {
+    conn.Write([]byte(reply.Raw() + "\n"))
+    
+    server.DebugOutput(reply.Raw())
+}
+
 // HandleMessage takes action after recieving a parsed message
-func (server *Server) HandleMessage(message *Message) {
+func (server *Server) HandleMessage(conn net.Conn, message *Message) {
     server.DebugInput(message.Raw())
+    
+    client, exists := server.Db.GetClient(conn.RemoteAddr().String())
+    
+    // Check and/or create client
+    if !exists {
+        client = server.Db.CreateClient(conn.RemoteAddr())
+    }
+    
+    // Handle the actual message
+    switch (message.Command) {
+        case "NICK":
+            client.Nickname = message.Params[0]
+            break
+            
+        case "PING":
+            server.Reply(conn, &Reply{
+                Params: []string { "PONG", message.Params[0] },
+                Trailing: message.Params[0],
+            })
+            break
+            
+        case "QUIT":
+            server.Db.DeleteClient(conn.RemoteAddr().String())
+            conn.Close()
+            break
+            
+        // After a user joins a channel a number of steps are executed:
+        //
+        //  1. Send JOIN confirmation
+        //  2. Send channel topic
+        //  3. Send a list of nicknames in the channel
+        //  4. Send the voice mode for the current user (using the channel service)
+        case "JOIN":
+            channel, exists := server.Db.GetChannel(message.Params[0])
+            
+            if exists {
+                channel.Join(client)
+                
+                server.Reply(conn, &Reply{
+                    Prefix: fmt.Sprintf("%v!~%v@%v", client.Nickname, client.Username, client.Addr.String()),
+                    Params: []string{ "JOIN", channel.Name },
+                })
+                
+                if len(channel.Topic) == 0 {
+                    server.Reply(conn, &Reply{
+                        Code: ReplyNoTopic,
+                        Params: []string{ channel.Name },
+                        Trailing: "No topic is set",
+                    })
+                } else {
+                    server.Reply(conn, &Reply{
+                        Code: ReplyTopic,
+                        Params: []string{ channel.Name },
+                        Trailing: channel.Topic,
+                    })
+                }
+                
+                server.Reply(conn, &Reply{
+                    Code: ReplyNameReply,
+                    Params: []string{ client.Nickname, "@", channel.Name },
+                    Trailing: strings.Join(channel.GetNicknames(), " "),
+                })
+                
+                server.Reply(conn, &Reply{
+                    Code: ReplyEndOfNames,
+                    Params: []string{ client.Nickname, channel.Name },
+                    Trailing: "End of NAMES list",
+                })
+                
+                server.Reply(conn, &Reply{
+                    Prefix: fmt.Sprintf("%v!%v@services.", "ChanServ", "ChanServ"),
+                    Params: []string{ "MODE", channel.Name, "+v", client.Nickname },
+                })
+            } else {
+                server.Reply(conn, &Reply{
+                    Code: ErrorNoSuchChannel,
+                    Params: []string{ client.Nickname, message.Params[0] },
+                    Trailing: "No such channel",
+                })
+            }
+            break
+            
+        case "USER":
+            client.Username = message.Params[0]
+            client.Mode = message.Params[1]
+            client.Realname = message.Trailing
+            client.IsRegistered = true
+            
+            server.Reply(conn, &Reply{ 
+                Code: ReplyWelcome,
+                Params: []string{ client.Nickname },
+                Trailing: "Welcome to the IRC network",
+            })
+            break
+            
+        default:
+            server.Reply(conn, &Reply{
+                Code: ErrorUnknownCommand,
+                Params: []string{ message.Command },
+                Trailing: "Unknown command",
+            })
+            break
+    }
 }
 
 // DebugInput ..
