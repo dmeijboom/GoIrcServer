@@ -1,9 +1,18 @@
 package main;
 
+import (
+    "fmt"
+)
+
 type Channel struct {
     Name string
     Topic string
     clients map[string]*Client
+}
+
+// GetChannelServicePrefix returns the prefix for the channel service
+func GetChannelServicePrefix() string {
+    return fmt.Sprintf("%v!%v@services.", "ChanServ", "ChanServ")
 }
 
 // Join adds a client to the channel

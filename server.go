@@ -49,6 +49,17 @@ func (server *Server) Reply(conn net.Conn, reply *Reply) {
     server.DebugOutput(reply.Raw())
 }
 
+// Broadcast sends a reply to all clients except the current one
+func (server *Server) Broadcast(currentClient *Client, channel *Channel, reply *Reply) {
+    for _, client := range channel.GetClients() {
+        if currentClient.Username != client.Username {
+            reply.Prefix = client.GeneratePrefix()
+            
+            server.Reply(client.Conn, reply)
+        }
+    }
+}
+
 // HandleMessage takes action after recieving a parsed message
 func (server *Server) HandleMessage(conn net.Conn, message *Message) {
     server.DebugInput(message.Raw())
@@ -82,14 +93,10 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
             channel, exists := server.Db.GetChannel(message.Params[0])
             
             if exists {
-                for _, user := range channel.GetClients() {
-                    if user.Username != client.Username {
-                        server.Reply(user.Conn, &Reply{
-                            Params: []string{ "PRIVMSG", channel.Name },
-                            Trailing: message.Trailing,
-                        })
-                    }
-                }
+                server.Broadcast(client, channel, &Reply{
+                    Params: []string{ "PRIVMSG", channel.Name },
+                    Trailing: message.Trailing,
+                })
             } else {
                 server.Reply(conn, &Reply{
                     Code: ErrorNoSuchChannel,
@@ -121,10 +128,11 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
             
         // After a user joins a channel a number of steps are executed:
         //
-        //  1. Send JOIN confirmation
-        //  2. Send channel topic
-        //  3. Send a list of nicknames in the channel
-        //  4. Send the voice mode for the current user (using the channel service)
+        //  1. 
+        //  2. Send JOIN confirmation
+        //  3. Send channel topic
+        //  4. Send a list of nicknames in the channel
+        //  5. Send the voice mode for the current user (using the channel service)
         case "JOIN":
             channel, exists := server.Db.GetChannel(message.Params[0])
             
@@ -132,7 +140,11 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
                 channel.Join(client)
                 
                 server.Reply(conn, &Reply{
-                    Prefix: fmt.Sprintf("%v!~%v@%v", client.Nickname, client.Username, client.Addr.String()),
+                    Prefix: client.GeneratePrefix(),
+                    Params: []string{ "JOIN", channel.Name },
+                })
+                
+                server.Broadcast(client, channel, &Reply{
                     Params: []string{ "JOIN", channel.Name },
                 })
                 
@@ -163,9 +175,18 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
                 })
                 
                 server.Reply(conn, &Reply{
-                    Prefix: fmt.Sprintf("%v!%v@services.", "ChanServ", "ChanServ"),
+                    Prefix: GetChannelServicePrefix(),
                     Params: []string{ "MODE", channel.Name, "+v", client.Nickname },
                 })
+                
+                for _, user := range server.Db.GetClients() {
+                    if user.Username != client.Username {
+                        server.Reply(user.Conn, &Reply{
+                            Prefix: GetChannelServicePrefix(),
+                            Params: []string{ "MODE", channel.Name, "+v", client.Nickname },
+                        })
+                    }
+                }
             } else {
                 server.Reply(conn, &Reply{
                     Code: ErrorNoSuchChannel,
