@@ -2,7 +2,11 @@ package main;
 
 import (
     "strings"
-    "errors"
+    // "errors"
+)
+
+const (
+    MESSAGE_TRIM_CHARS = "\n"
 )
 
 // Message defines an IRC RAW message containing the following input:
@@ -19,12 +23,6 @@ type Message struct {
     Params []string
     Trailing string
     HasTrailing bool
-}
-
-// MessageCutset strips newlines from the string, somehow it's twice
-// as fast than using `strings.Trim()``
-func MessageCutset(str rune) bool {
-    return str == '\n'
 }
 
 // Raw returns the RAW representation of the IRC message
@@ -72,24 +70,18 @@ func ParseMessage(data string) (*Message, error) {
     index := strings.IndexByte(data, ' ')
     
     if index == -1 {
-        msg.Command = strings.TrimFunc(data, MessageCutset)
+        msg.Command = strings.Trim(data, MESSAGE_TRIM_CHARS)
         return &msg, nil
     }
     
-    msg.Command = strings.TrimFunc(data[0:index], MessageCutset)
+    msg.Command = strings.Trim(data[0:index], MESSAGE_TRIM_CHARS)
     data = data[index + 1:]
     
-    index = strings.LastIndexByte(data, ':')
+    index = strings.IndexByte(data, ':')
     
     // Parse the trailing part
     if index > -1 {
-        endIndex := strings.IndexByte(data, '\n')
-        
-        if endIndex == -1 {
-            return &msg, errors.New("Expecting a newline at the end of a message, instead got: `" + data + "`")
-        }
-        
-        msg.Trailing = data[index + 1:endIndex]
+        msg.Trailing = data[index + 1:]
         msg.HasTrailing = true
         
         data = data[0:index]
@@ -100,15 +92,14 @@ func ParseMessage(data string) (*Message, error) {
         index = strings.IndexByte(data, ' ')
 
         if index == -1 {
-            // If the last one only contains a newline or is empty it should not be recognized
-            // as a valid parameter
-            if data != "" && data != "\n" {
-                msg.Params = append(msg.Params, strings.TrimFunc(data, MessageCutset))
+            // If the last one is empty it should not be recognized as a valid parameter
+            if len(data) > 0 {
+                msg.Params = append(msg.Params, strings.Trim(data, MESSAGE_TRIM_CHARS))
             }
             break
         }
         
-        msg.Params = append(msg.Params, strings.TrimFunc(data[0:index], MessageCutset))
+        msg.Params = append(msg.Params, strings.Trim(data[0:index], MESSAGE_TRIM_CHARS))
         
         if len(data) > index {
             data = data[index + 1:]

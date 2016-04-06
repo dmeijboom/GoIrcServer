@@ -5,10 +5,16 @@ package main;
 // - Channels
 // - Servers
 type Database struct {
-    Clients map[string]*Client
+    clients map[string]*Client
 }
 
 // Initialize allocates memory for all maps
 func (db *Database) Initialize() {
-    db.Clients = make(map[string]*Client)
+    db.clients = make(map[string]*Client)
+}
+
+// GetClients is a wrapper to `clients` but it is mainly abstracted because
+// I might implement a real database for IRC
+func (db *Database) GetClients() map[string]*Client {
+    return db.clients
 }

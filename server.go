@@ -3,6 +3,7 @@ package main;
 import (
     "net"
     "bufio"
+    "irc/assert"
     "fmt"
 )
 
@@ -42,7 +43,12 @@ func (server *Server) HandleMessage(message *Message) {
 
 // DebugInput ..
 func (server *Server) DebugInput(raw string) {
-    fmt.Printf("In:  %v\n", raw)
+    fmt.Printf("%vIn%v:  %v\n", assert.BOLD_ON, assert.BOLD_OFF, raw)
+}
+
+// DebugOutput ..
+func (server *Server) DebugOutput(raw string) {
+    fmt.Printf("%vOut%v: %v\n", assert.BOLD_ON, assert.BOLD_OFF, raw)
 }
 
 func main() {
