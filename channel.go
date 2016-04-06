@@ -29,3 +29,8 @@ func (channel *Channel) GetNicknames() []string {
     
     return nicknames
 }
+
+// GetClients returns all clients within this channel
+func (channel *Channel) GetClients() map[string]*Client {
+    return channel.clients
+}

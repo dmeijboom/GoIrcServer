@@ -11,14 +11,16 @@ import (
 // Server defines the IRC server
 type Server struct {
     Db *Database
+    Hostname string
 }
 
 // Connect opens a socket connection
 func (server *Server) Connect() {
     server.Db = &Database{}
     server.Db.Initialize()
+    server.Hostname = "localhost"
     
-    serv, _ := net.Listen("tcp", "localhost:9000")
+    serv, _ := net.Listen("tcp", server.Hostname + ":9000")
     
     for {
         conn, _ := serv.Accept()
@@ -74,6 +76,26 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
         case "QUIT":
             server.Db.DeleteClient(conn.RemoteAddr().String())
             conn.Close()
+            break
+            
+        case "WHO":
+            channel, exists := server.Db.GetChannel(message.Params[0])
+            
+            if exists {
+                for _, user := range channel.GetClients() {
+                    server.Reply(conn, &Reply{
+                        Code: ReplyWhoReply,
+                        Params: []string{ client.Nickname, channel.Name, "~" + user.Username, user.Addr.String(), server.Hostname, user.Nickname, "H+" },
+                        Trailing: fmt.Sprintf("%v %v", 0, user.Realname),
+                    })
+                }
+            }
+            
+            server.Reply(conn, &Reply{
+                Code: ReplyEndOfWho,
+                Params: []string{ client.Nickname, channel.Name },
+                Trailing: "End of WHO list",
+            })
             break
             
         // After a user joins a channel a number of steps are executed:
