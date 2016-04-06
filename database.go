@@ -40,12 +40,12 @@ func (db *Database) DeleteClient(addr string) {
 }
 
 //CreateClient creates a new client and adds it to the database
-func (db *Database) CreateClient(addr net.Addr) *Client {
-    client := Client{ Addr: addr }
+func (db *Database) CreateClient(conn net.Conn) *Client {
+    client := Client{ Addr: conn.RemoteAddr(), Conn: conn }
     
-    db.clients[addr.String()] = &client
+    db.clients[conn.RemoteAddr().String()] = &client
     
-    return db.clients[addr.String()]
+    return db.clients[conn.RemoteAddr().String()]
 }
 
 // GetChannels returns all channels

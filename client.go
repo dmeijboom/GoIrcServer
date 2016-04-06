@@ -10,5 +10,6 @@ type Client struct {
     Realname string
     Mode string
     Addr net.Addr
+    Conn net.Conn
     IsRegistered bool
 }

@@ -57,7 +57,7 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
     
     // Check and/or create client
     if !exists {
-        client = server.Db.CreateClient(conn.RemoteAddr())
+        client = server.Db.CreateClient(conn)
     }
     
     // Handle the actual message
@@ -76,6 +76,27 @@ func (server *Server) HandleMessage(conn net.Conn, message *Message) {
         case "QUIT":
             server.Db.DeleteClient(conn.RemoteAddr().String())
             conn.Close()
+            break
+            
+        case "PRIVMSG":
+            channel, exists := server.Db.GetChannel(message.Params[0])
+            
+            if exists {
+                for _, user := range channel.GetClients() {
+                    if user.Username != client.Username {
+                        server.Reply(user.Conn, &Reply{
+                            Params: []string{ "PRIVMSG", channel.Name },
+                            Trailing: message.Trailing,
+                        })
+                    }
+                }
+            } else {
+                server.Reply(conn, &Reply{
+                    Code: ErrorNoSuchChannel,
+                    Params: []string{ client.Nickname, message.Params[0] },
+                    Trailing: "No such channel",
+                })
+            }
             break
             
         case "WHO":
